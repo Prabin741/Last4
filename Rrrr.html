@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BBA Exam Result</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- Firebase scripts already included -->
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 500px;
+      width: 90%;
+      margin-top: 30px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .result, .error, .success {
+      margin-top: 10px;
+      text-align: center;
+    }
+.result {
+  background: #e0ffe0;
+  padding: 15px;
+  border-radius: 5px;
+  display: none;
+}
+   .result > p,
+.result > ul > li > strong {
+  text-align: center;
+  display: block;
+}
+
+.result ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.result ul ul {
+  padding-left: 20px;
+  text-align: left;
+}
+    .error {
+      color: red;
+    }
+    .success {
+      color: green;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Show Login Button -->
+<div class="container" id="adminLoginBtnBox">
+  <button onclick="showLoginForm()">Admin Login</button>
+</div>
+
+<!-- Admin Login (Initially hidden) -->
+<div class="admin-login container" id="adminLoginForm" style="display: none;">
+  <h2>Admin Login</h2>
+  <input type="email" id="adminEmail" placeholder="Admin Email" />
+  <input type="password" id="adminPassword" placeholder="Password" />
+  <button onclick="loginAdmin()">Login</button>
+  <div class="error" id="loginError"></div>
+</div>
+
+<!-- Admin Panel -->
+<div class="admin-form container" id="adminPanel" style="display: none;">
+  <h2>Admin: Add Result</h2>
+  <input type="text" id="adminSymbol" placeholder="Symbol Number (8-digit)" maxlength="8" />
+  <label for="semesterSelect">Select Semester:</label>
+  <select id="semesterSelect" onchange="autofillSubjects()">
+    <option value="">-- Select Semester --</option>
+    <option value="1st Semester">1st Semester</option>
+    <option value="2nd Semester">2nd Semester</option>
+    <option value="3rd Semester">3rd Semester</option>
+    <option value="4th Semester">4th Semester</option>
+    <option value="5th Semester">5th Semester</option>
+    <option value="6th Semester">6th Semester</option>
+    <option value="7th Semester">7th Semester</option>
+    <option value="8th Semester">8th Semester</option>
+  </select>
+  <input type="text" id="adminGPA" placeholder="Total GPA (e.g., 3.8)" />
+  <div id="subjectsContainer"></div>
+  <button onclick="addResult()">Add Result</button>
+  <button onclick="logoutAdmin()" style="background-color: red;">Logout</button>
+  <div class="error" id="adminError"></div>
+  <div class="success" id="adminSuccess"></div>
+
+  <h4 style="margin-top:30px;">Delete Semester / All Semesters</h4>
+  <input type="text" id="deleteSymbol" placeholder="Symbol Number (8-digit)" maxlength="8" />
+  <input type="text" id="deleteSemester" placeholder="Semester to delete (leave blank to delete all)" />
+  <button onclick="deleteSemester()">Delete</button>
+  <div class="success" id="deleteSuccess"></div>
+  <div class="error" id="deleteError"></div>
+  <hr>
+<h4>Upload Excel File</h4>
+<input type="file" id="excelFile" accept=".xlsx, .xls" />
+<button onclick="uploadExcel()">Upload Excel</button>
+<div class="success" id="excelSuccess"></div>
+<div class="error" id="excelError"></div>
+</div>
+
+<!-- Subject autofill -->
+<script>
+  const semesterSubjects = {
+    "1st Semester": ["English I", "Business Mathematics I", "Financial Accounting I", "Principles of Management", "Computer and IT Applications"],
+    "2nd Semester": ["English II", "Business Mathematics II", "Financial Accounting II", "General Psychology", "Microeconomics"],
+    "3rd Semester": ["Business Communication I", "Business Statistics", "Essentials of Finance", "Fundamentals of Sociology", "Macroeconomics"],
+    "4th Semester": ["Business Communication II", "Organizational Behavior", "Financial Management", "Human Resource Management", "Business Law"],
+    "5th Semester": ["Corporate Taxation", "Business Research Methods", "Database Management Systems", "Business Environment", "Operations Management"],
+    "6th Semester": ["Strategic Management", "E-commerce", "Cost and Management Accounting", "Entrepreneurship and Small Business", "Business Ethics"],
+    "7th Semester": ["International Business", "Investment Analysis", "Management Information Systems", "Service Marketing", "Elective I"],
+    "8th Semester": ["Project Work", "Internship", "Elective II", "Elective III", "Comprehensive Viva"]
+  };
+
+  function autofillSubjects() {
+    const semester = document.getElementById("semesterSelect").value;
+    const container = document.getElementById("subjectsContainer");
+    container.innerHTML = "";
+
+    if (semesterSubjects[semester]) {
+      semesterSubjects[semester].forEach(subject => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = `${subject} (Grade)`;
+        input.dataset.subject = subject;
+        input.classList.add("subjectInput");
+        input.style.marginTop = "5px";
+        input.style.width = "100%";
+        container.appendChild(input);
+      });
+    }
+  }
+</script>
+
+<!-- Student Result Checker -->
+<div class="container">
+  <h2>BBA Board Exam Result</h2>
+  <input type="text" id="symbolNo" placeholder="Enter 8-digit Symbol No" maxlength="8" />
+  <button onclick="checkResult()">Check Result</button>
+  <div class="error" id="error"></div>
+  <div class="result" id="resultBox">
+    <p><strong>Results:</strong></p>
+    <ul id="subjectList"></ul>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7QKLaI2ByJ6suGCNOWprvLwPt8ktCCSA",
+    authDomain: "bba-result.firebaseapp.com",
+    databaseURL: "https://bba-result-default-rtdb.firebaseio.com",
+    projectId: "bba-result",
+    storageBucket: "bba-result.appspot.com",
+    messagingSenderId: "502446271928",
+    appId: "1:502446271928:web:d35321ebeb6f96cea3b34d",
+    measurementId: "G-LP9GTXWX2R"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const database = firebase.database();
+
+  auth.onAuthStateChanged(user => {
+    const adminPanel = document.getElementById("adminPanel");
+    const loginForm = document.getElementById("adminLoginForm");
+    const loginBtnBox = document.getElementById("adminLoginBtnBox");
+
+    if (user) {
+      adminPanel.style.display = "block";
+      loginForm.style.display = "none";
+      loginBtnBox.style.display = "none";
+    } else {
+      adminPanel.style.display = "none";
+      loginForm.style.display = "none";
+      loginBtnBox.style.display = "block";
+    }
+  });
+
+  function showLoginForm() {
+    document.getElementById("adminLoginForm").style.display = "block";
+    document.getElementById("adminLoginBtnBox").style.display = "none";
+  }
+
+function loginAdmin() {
+  const email = document.getElementById("adminEmail").value.trim();
+  const password = document.getElementById("adminPassword").value;
+
+  const errorBox = document.getElementById("loginError");
+  const allowedAdmins = [
+    "admin1@example.com",
+    "prabinpokhrel234@gmail.com"
+  ]; // Replace with your actual admin emails
+
+  auth.signInWithEmailAndPassword(email, password)
+    .then(userCredential => {
+      const user = userCredential.user;
+      if (!allowedAdmins.includes(user.email)) {
+        auth.signOut(); // logout unauthorized user
+        errorBox.textContent = "Access denied. Not an authorized admin.";
+      } else {
+        document.getElementById("adminEmail").value = "";
+        document.getElementById("adminPassword").value = "";
+        errorBox.textContent = "";
+      }
+    })
+    .catch(error => {
+      errorBox.textContent = "Login failed: " + error.message;
+    });
+}
+  function addResult() {
+    const symbol = document.getElementById("adminSymbol").value.trim();
+    const semester = document.getElementById("semesterSelect").value.trim();
+    const gpa = document.getElementById("adminGPA").value.trim();
+    const subjectInputs = document.querySelectorAll(".subjectInput");
+
+    const subjects = {};
+    subjectInputs.forEach((input, index) => {
+        const grade = input.value.trim();
+        const subject = input.dataset.subject;
+        if (grade && subject) {
+            subjects[index] = `${subject}: ${grade}`;
+        }
+    });
+
+    const errorBox = document.getElementById("adminError");
+    const successBox = document.getElementById("adminSuccess");
+
+    errorBox.textContent = "";
+    successBox.textContent = "";
+
+    if (symbol.length !== 8 || isNaN(symbol)) {
+        errorBox.textContent = "Invalid symbol number.";
+        return;
+    }
+
+    if (!semester || Object.keys(subjects).length === 0 || !gpa) {
+        errorBox.textContent = "All fields are required.";
+        return;
+    }
+
+    // Prepare the data to be saved
+    const resultData = {
+        subjects: subjects,
+        gpa: gpa,
+        timestamp: new Date().toISOString()
+    };
+
+    // First check if results exist for this semester
+    database.ref("results/" + symbol + "/semesters/" + semester).once('value').then((snapshot) => {
+        const existingData = snapshot.val();
+        
+        if (existingData) {
+            // Determine the next available set number
+            let setNumber = 1;
+            if (existingData.subjects) setNumber = 2;
+            if (existingData.subjects2) setNumber = 3;
+            
+            if (setNumber > 3) {
+                errorBox.textContent = "Maximum of 3 result sets allowed per semester.";
+                return Promise.reject("Maximum sets reached");
+            }
+            
+            // Create update data with the new set
+            const updateData = {};
+            updateData[`subjects${setNumber > 1 ? setNumber : ''}`] = subjects;
+            updateData[`gpa${setNumber > 1 ? setNumber : ''}`] = gpa;
+            
+            // Update the existing record
+            return database.ref("results/" + symbol + "/semesters/" + semester).update(updateData);
+        } else {
+            // Create new record
+            return database.ref("results/" + symbol + "/semesters/" + semester).set(resultData);
+        }
+    })
+    .then(() => {
+        successBox.textContent = "Result added successfully.";
+        document.getElementById("adminSymbol").value = "";
+        document.getElementById("semesterSelect").value = "";
+        document.getElementById("adminGPA").value = "";
+        document.getElementById("subjectsContainer").innerHTML = "";
+    })
+    .catch((error) => {
+        errorBox.textContent = "Failed to add result: " + (error.message || error);
+        console.error(error);
+    });
+}
+function checkResult() {
+    const symbol = document.getElementById("symbolNo").value.trim();
+    const resultBox = document.getElementById("resultBox");
+    const errorBox = document.getElementById("error");
+    const subjectList = document.getElementById("subjectList");
+
+    // Clear previous results
+    resultBox.style.display = "none";
+    errorBox.textContent = "";
+    subjectList.innerHTML = "";
+
+    // Validate symbol number
+    if (symbol.length !== 8 || isNaN(symbol)) {
+        errorBox.textContent = "Please enter a valid 8-digit symbol number.";
+        return;
+    }
+
+    // Fetch results
+    database.ref("results/" + symbol).get().then((snapshot) => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            
+            // Loop through all semesters
+            Object.entries(data.semesters).forEach(([semesterName, semesterData]) => {
+                // Create a container for each semester
+                const container = document.createElement("div");
+                container.style.fontFamily = "Arial, sans-serif";
+                container.style.marginBottom = "20px";
+                container.style.border = "1px solid #ddd";
+                container.style.padding = "15px";
+                container.style.borderRadius = "5px";
+
+                // Function to add a result set
+                const addResultSet = (subjects, gpa, setNumber = '') => {
+                    // Add header if it's not the first set
+                    if (setNumber) {
+                        const setHeader = document.createElement("div");
+                        setHeader.innerHTML = `<strong>${setNumber}</strong>`;
+                        setHeader.style.marginBottom = "8px";
+                        setHeader.style.fontSize = "14px";
+                        setHeader.style.color = "#555";
+                        container.appendChild(setHeader);
+                    }
+
+                    // Add subjects
+                    Object.values(subjects).forEach((subject) => {
+                        const subjectDiv = document.createElement("div");
+                        subjectDiv.textContent = subject.replace(":", ": ");
+                        subjectDiv.style.marginBottom = "4px";
+                        container.appendChild(subjectDiv);
+                    });
+
+                    // Add GPA
+                    if (gpa) {
+                        const gpaDiv = document.createElement("div");
+                        gpaDiv.innerHTML = `GPA: <strong>${gpa}</strong>`;
+                        gpaDiv.style.marginTop = "8px";
+                        gpaDiv.style.fontWeight = "bold";
+                        container.appendChild(gpaDiv);
+                    }
+                };
+
+                // Add semester name header
+                const semesterHeader = document.createElement("h3");
+                semesterHeader.textContent = semesterName;
+                semesterHeader.style.marginTop = "0";
+                semesterHeader.style.marginBottom = "15px";
+                semesterHeader.style.color = "#333";
+                container.appendChild(semesterHeader);
+
+                // Add all available result sets
+                if (semesterData.subjects) {
+                    addResultSet(semesterData.subjects, semesterData.gpa, "Original");
+                }
+                if (semesterData.subjects2) {
+                    addResultSet(semesterData.subjects2, semesterData.gpa2, "Recheck 1");
+                }
+                if (semesterData.subjects3) {
+                    addResultSet(semesterData.subjects3, semesterData.gpa3, "Recheck 2");
+                }
+
+                // Append this semester's results to the subjectList
+                subjectList.appendChild(container);
+            });
+
+            resultBox.style.display = "block";
+        } else {
+            errorBox.textContent = "No result found for this symbol number.";
+        }
+    }).catch((error) => {
+        errorBox.textContent = "Error fetching result.";
+        console.error(error);
+    });
+}
+
+
+  function deleteSemester() {
+    const symbol = document.getElementById("deleteSymbol").value.trim();
+    const semester = document.getElementById("deleteSemester").value.trim();
+    const errorBox = document.getElementById("deleteError");
+    const successBox = document.getElementById("deleteSuccess");
+
+    errorBox.textContent = "";
+    successBox.textContent = "";
+
+    if (symbol.length !== 8 || isNaN(symbol)) {
+      errorBox.textContent = "Enter a valid 8-digit symbol number.";
+      return;
+    }
+
+    const ref = semester
+      ? database.ref(`results/${symbol}/semesters/${semester}`)
+      : database.ref(`results/${symbol}/semesters`);
+
+    ref.remove()
+      .then(() => {
+        successBox.textContent = semester
+          ? `Deleted semester "${semester}" for student ${symbol}.`
+          : `Deleted ALL semesters for student ${symbol}.`;
+        document.getElementById("deleteSymbol").value = "";
+        document.getElementById("deleteSemester").value = "";
+      })
+      .catch((error) => {
+        errorBox.textContent = "Error deleting data.";
+        console.error(error);
+      });
+  }
+</script>
+<script>
+  function uploadExcel() {
+    const fileInput = document.getElementById("excelFile");
+    const file = fileInput.files[0];
+    const successBox = document.getElementById("excelSuccess");
+    const errorBox = document.getElementById("excelError");
+
+    successBox.textContent = "";
+    errorBox.textContent = "";
+
+    if (!file) {
+        errorBox.textContent = "Please select an Excel file.";
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        errorBox.textContent = "File too large! Maximum 5MB allowed.";
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            // Extract semester from first cell
+            const semesterCell = jsonData[0]?.[0]?.toString().trim();
+            let semester = "2nd Semester"; // Default
+            
+            const match = semesterCell?.match(/(\d+)(st|nd|rd|th)\s+semester/i);
+            if (match) {
+                semester = `${match[1]}${match[2]} Semester`;
+            }
+
+            // Get subject headers
+            const headers = jsonData[1] || [];
+            const subjectColumns = headers.slice(1, -1); // Exclude roll no and GPA
+            const totalSubjects = subjectColumns.length;
+
+            let processedCount = 0;
+            let errorCount = 0;
+            let originalCount = 0;
+            let recheckCount = 0;
+            const promises = [];
+
+            for (let i = 2; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length < 2) continue;
+
+                const rollNo = row[0]?.toString().trim();
+                const gpa = row[row.length - 1]?.toString().trim();
+                const subjectGrades = row.slice(1, -1);
+
+                // Validate roll number
+                if (!rollNo || rollNo.length !== 8 || isNaN(rollNo)) {
+                    errorCount++;
+                    continue;
+                }
+
+                // Prepare subjects and check completeness
+                const subjects = {};
+                let filledSubjects = 0;
+
+                subjectColumns.forEach((subject, index) => {
+                    const grade = subjectGrades[index]?.toString().trim();
+                    if (grade && grade !== "") {
+                        subjects[index] = `${subject}: ${grade}`;
+                        filledSubjects++;
+                    }
+                });
+
+                if (Object.keys(subjects).length === 0) {
+                    errorCount++;
+                    continue;
+                }
+
+                // Determine if original or recheck
+                const isOriginal = (filledSubjects === totalSubjects);
+                const ref = firebase.database().ref(`results/${rollNo}/semesters/${semester}`);
+
+                promises.push(
+                    ref.once('value').then((snapshot) => {
+                        const existingData = snapshot.val();
+                        const resultData = {
+                            gpa: gpa || "0.0",
+                            subjects: subjects,
+                            timestamp: new Date().toISOString()
+                        };
+
+                        if (isOriginal) {
+                            // Original result - overwrite main record
+                            if (existingData) {
+                                const updateData = {
+                                    subjects: subjects,
+                                    gpa: gpa || "0.0"
+                                };
+                                return ref.update(updateData);
+                            } else {
+                                return ref.set(resultData);
+                            }
+                        } else {
+                            // Recheck result - add as additional set
+                            let setNumber = 2; // Start with recheck 1 (subjects2)
+                            if (existingData) {
+                                if (existingData.subjects2) setNumber = 3; // recheck 2 (subjects3)
+                                if (existingData.subjects3) return; // Skip if already have 2 rechecks
+                            }
+                            
+                            const updateData = {};
+                            updateData[`subjects${setNumber}`] = subjects;
+                            updateData[`gpa${setNumber}`] = gpa || "0.0";
+                            return ref.update(updateData);
+                        }
+                    })
+                    .then(() => {
+                        processedCount++;
+                        if (isOriginal) originalCount++;
+                        else recheckCount++;
+                    })
+                    .catch((error) => {
+                        console.error("Error processing roll no", rollNo, error);
+                        errorCount++;
+                    })
+                );
+            }
+
+            // Wait for all operations to complete
+            Promise.allSettled(promises).then(() => {
+                let message = `Upload complete: ${processedCount} records processed\n` +
+                             `- ${originalCount} original results\n` +
+                             `- ${recheckCount} recheck results\n` +
+                             `- ${errorCount} errors`;
+                successBox.textContent = message;
+                fileInput.value = '';
+            });
+            
+        } catch (err) {
+            console.error("Excel processing error:", err);
+            errorBox.textContent = "An error occurred while processing the Excel file: " + err.message;
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+  
+  function logoutAdmin() {
+  firebase.auth().signOut().then(() => {
+    console.log("Admin logged out.");
+    // Optionally, you can redirect or refresh the page
+    location.reload();
+  }).catch((error) => {
+    console.error("Logout failed:", error);
+  });
+}
+</script>
+</body>
+</html>
